@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: settings
+    // Document ID: appConfig
+    // Fields:
+    //   - accessCode: string (required) - The code to unlock the app
+    //   - masterKey: string (required) - The key to access admin panel
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "kesiswaanbrangkas@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Settings collection
+    match /settings/appConfig {
+      // Only admins can read/write directly from the client
+      // (The backend server uses Admin SDK and bypasses these rules)
+      allow read, write: if isAdmin();
+    }
+
+    // Users collection (for role management)
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "entities": {
+    "AppConfig": {
+      "title": "App Configuration",
+      "description": "Stores application-wide settings like access codes.",
+      "type": "object",
+      "properties": {
+        "accessCode": {
+          "type": "string",
+          "description": "The code required to unlock the application after 2 uses."
+        },
+        "masterKey": {
+          "type": "string",
+          "description": "The master key used to access the admin panel."
+        }
+      },
+      "required": ["accessCode", "masterKey"]
+    }
+  },
+  "firestore": {
+    "/settings/appConfig": {
+      "schema": "AppConfig",
+      "description": "The main configuration document for the application."
+    }
+  }
+}

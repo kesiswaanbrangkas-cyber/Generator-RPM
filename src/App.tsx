@@ -18,8 +18,11 @@ import {
   Settings,
   ShieldCheck,
   X,
-  Key
+  Key,
+  LogIn,
+  LogOut
 } from 'lucide-react';
+import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User } from './lib/firebase';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 
@@ -90,8 +93,35 @@ export default function App() {
   const [adminError, setAdminError] = useState('');
   const [adminSuccess, setAdminSuccess] = useState('');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   
   const resultRef = useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login error:", error);
+      setAdminError("Gagal login dengan Google.");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsAdminAuthenticated(false);
+      setMasterKeyInput('');
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -806,6 +836,29 @@ export default function App() {
               <div className="p-8">
                 {!isAdminAuthenticated ? (
                   <div className="space-y-6">
+                    {user ? (
+                      <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-10 h-10 rounded-full border border-slate-200" />
+                          <div className="text-left">
+                            <p className="text-sm font-bold text-slate-900">{user.displayName}</p>
+                            <p className="text-xs text-slate-500">{user.email}</p>
+                          </div>
+                        </div>
+                        <button onClick={handleLogout} className="p-2 hover:bg-slate-200 rounded-full text-slate-400">
+                          <LogOut className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={handleGoogleLogin}
+                        className="w-full py-3 flex items-center justify-center gap-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-medium text-slate-700"
+                      >
+                        <LogIn className="w-5 h-5" />
+                        Login dengan Google
+                      </button>
+                    )}
+                    
                     <div className="text-center space-y-2">
                       <p className="text-slate-500 text-sm">Masukkan Master Key untuk mengakses pengaturan.</p>
                     </div>
@@ -823,7 +876,7 @@ export default function App() {
                         onClick={handleAdminAuth}
                         className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all"
                       >
-                        Login Admin
+                        Masuk ke Panel Admin
                       </button>
                     </div>
                   </div>
