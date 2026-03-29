@@ -2,25 +2,31 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import admin from 'firebase-admin';
+import { GoogleGenAI } from "@google/genai";
 
 // Load Firebase config to get project ID
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
-const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"));
+let firebaseConfig = { projectId: "" };
+if (fs.existsSync(firebaseConfigPath)) {
+  firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf-8"));
+}
 
-// Initialize Firebase Admin (this will bypass security rules)
-// On Google Cloud / Vercel, it can often use default credentials or just the project ID
-if (!admin.apps.length) {
+// Initialize Firebase Admin
+if (!admin.apps.length && firebaseConfig.projectId) {
   admin.initializeApp({
     projectId: firebaseConfig.projectId
   });
 }
-const db = admin.firestore();
+const db = firebaseConfig.projectId ? admin.firestore() : null;
 
 const app = express();
 const PORT = 3000;
 
 // Use JSON body parser
 app.use(express.json());
+
+// Initialize Gemini AI
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 // Simple persistence for the access code (now using Firestore)
 let config = {
@@ -30,6 +36,7 @@ let config = {
 
 // Function to sync config from Firestore
 const syncConfigFromFirestore = async () => {
+  if (!db) return;
   try {
     const configDoc = await db.collection("settings").doc("appConfig").get();
     if (configDoc.exists) {
@@ -47,6 +54,36 @@ const syncConfigFromFirestore = async () => {
 
 // Initial sync
 syncConfigFromFirestore();
+
+// API: Generate RPM using Gemini AI
+app.post("/api/generate-rpm", async (req, res) => {
+  const { prompt } = req.body;
+  
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ 
+      success: false, 
+      message: "GEMINI_API_KEY is not configured on the server." 
+    });
+  }
+
+  try {
+    const response = await genAI.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+
+    res.json({ 
+      success: true, 
+      text: response.text 
+    });
+  } catch (error: any) {
+    console.error("Gemini Generation Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Gagal menghasilkan RPM." 
+    });
+  }
+});
 
 // API: Verify the access code
 app.post("/api/auth/verify-code", async (req, res) => {
@@ -79,12 +116,16 @@ app.post("/api/admin/update-code", async (req, res) => {
       return res.status(400).json({ success: false, message: "Kode minimal 4 karakter." });
     }
     config.accessCode = newCode;
-    try {
-      await db.collection("settings").doc("appConfig").update({ accessCode: newCode });
-      res.json({ success: true, message: "Kode akses berhasil diubah dan tersimpan di Firestore." });
-    } catch (e) {
-      console.error("Failed to update Firestore:", e);
-      res.status(500).json({ success: false, message: "Gagal menyimpan ke database." });
+    if (db) {
+      try {
+        await db.collection("settings").doc("appConfig").update({ accessCode: newCode });
+        res.json({ success: true, message: "Kode akses berhasil diubah dan tersimpan di Firestore." });
+      } catch (e) {
+        console.error("Failed to update Firestore:", e);
+        res.status(500).json({ success: false, message: "Gagal menyimpan ke database." });
+      }
+    } else {
+      res.json({ success: true, message: "Kode akses berhasil diubah (hanya di memori karena Firestore tidak aktif)." });
     }
   } else {
     res.status(401).json({ success: false, message: "Master key salah." });

@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   FileText, 
@@ -213,10 +212,7 @@ export default function App() {
 
     setIsLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      const model = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `
+      const prompt = `
           Buatkan Rencana Pelaksanaan Menarik (RPM) berdasarkan data berikut:
           Nama Sekolah: ${formData.namaSekolah}
           Mata Pelajaran: ${formData.mataPelajaran}
@@ -255,17 +251,27 @@ export default function App() {
              - Asesmen (Setelah kegiatan penutup)
 
           Tuliskan dalam Bahasa Indonesia yang profesional dan inspiratif.
-        `,
-      });
+        `;
 
-      const response = model;
-      // Remove any remaining asterisks just in case
-      const cleanText = response.text.replace(/\*/g, '');
-      setResult(cleanText);
-      incrementUsage();
+      const response = await fetch('/api/generate-rpm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Remove any remaining asterisks just in case
+        const cleanText = data.text.replace(/\*/g, '');
+        setResult(cleanText);
+        incrementUsage();
+      } else {
+        setResult(data.message || "Gagal menghasilkan RPM. Silakan coba lagi.");
+      }
     } catch (error) {
       console.error("Error generating RPM:", error);
-      setResult("Gagal menghasilkan RPM. Silakan coba lagi.");
+      setResult("Gagal terhubung ke server. Silakan coba lagi.");
     } finally {
       setIsLoading(false);
     }
